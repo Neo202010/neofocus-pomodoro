@@ -202,6 +202,16 @@
 
     .btn-secondary:hover { background: var(--surface3); color: var(--text); }
 
+    .btn-done {
+      background: var(--surface2);
+      color: var(--green);
+      border: 1.5px solid var(--green);
+      min-width: 140px;
+    }
+
+    .btn-done:hover { background: var(--green-glow); transform: translateY(-1px); }
+    .btn-done:active { transform: translateY(0); }
+
     /* HISTORY */
     .history-wrap {
       width: 100%;
@@ -458,6 +468,7 @@
 <!-- CONTROLS -->
 <div class="controls">
   <button class="btn btn-primary" id="btn-start">▶ Iniciar</button>
+  <button class="btn btn-done" id="btn-done" style="display:none">✅ Completado</button>
   <button class="btn btn-secondary" id="btn-reset">↺ Resetear</button>
 </div>
 
@@ -513,17 +524,40 @@
   function beep() {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      [0, 150, 300].forEach((delay, i) => {
+      // 3 ascending tones, louder and longer
+      [
+        { delay: 0,   freq: 523, dur: 0.18 },
+        { delay: 200, freq: 659, dur: 0.18 },
+        { delay: 400, freq: 784, dur: 0.5  },
+      ].forEach(({ delay, freq, dur }) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.connect(gain); gain.connect(ctx.destination);
-        osc.frequency.value = 440 + i * 110;
+        osc.frequency.value = freq;
         osc.type = 'sine';
-        gain.gain.setValueAtTime(0.3, ctx.currentTime + delay/1000);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay/1000 + 0.4);
-        osc.start(ctx.currentTime + delay/1000);
-        osc.stop(ctx.currentTime + delay/1000 + 0.4);
+        const t = ctx.currentTime + delay / 1000;
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.55, t + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        osc.start(t);
+        osc.stop(t + dur + 0.05);
       });
+    } catch(e) {}
+  }
+
+  function beepComplete() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      // Single soft chime for manual complete
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = 660;
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0.4, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.65);
     } catch(e) {}
   }
 
@@ -589,10 +623,15 @@
     updateHeader();
   }
 
+  function showDoneBtn(visible) {
+    document.getElementById('btn-done').style.display = visible ? 'inline-flex' : 'none';
+  }
+
   function startTimer() {
     running = true;
     sessionStart = Date.now();
     document.getElementById('btn-start').textContent = '⏸ Pausar';
+    showDoneBtn(true);
     interval = setInterval(() => {
       remainSecs--;
       updateDisplay();
@@ -601,6 +640,7 @@
         running = false;
         beep();
         saveSession(true);
+        showDoneBtn(false);
         showToast(currentMode === 'work' ? '🎯 ¡Pomodoro completado!' : '✅ ¡Descanso completado!');
         document.getElementById('btn-start').textContent = '▶ Iniciar';
         resetTimer();
@@ -612,6 +652,7 @@
     clearInterval(interval);
     running = false;
     saveSession(false);
+    showDoneBtn(false);
     document.getElementById('btn-start').textContent = '▶ Continuar';
   }
 
@@ -678,7 +719,18 @@
   });
 
   document.getElementById('btn-reset').addEventListener('click', () => {
-    if (running) saveSession(false);
+    if (running) { saveSession(false); showDoneBtn(false); }
+    resetTimer();
+  });
+
+  document.getElementById('btn-done').addEventListener('click', () => {
+    clearInterval(interval);
+    running = false;
+    beepComplete();
+    saveSession(true);
+    showDoneBtn(false);
+    showToast('✅ ¡Actividad completada!');
+    document.getElementById('btn-start').textContent = '▶ Iniciar';
     resetTimer();
   });
 
@@ -695,7 +747,7 @@
 
   document.querySelectorAll('.tab').forEach(t => {
     t.addEventListener('click', () => {
-      if (running) { saveSession(false); clearInterval(interval); running = false; }
+      if (running) { saveSession(false); clearInterval(interval); running = false; showDoneBtn(false); }
       setMode(t.dataset.mode);
     });
   });
