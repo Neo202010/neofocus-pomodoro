@@ -693,6 +693,18 @@
     document.getElementById('sum-streak').textContent = streak;
   }
 
+  function getShift(timeStr) {
+    // timeStr = "HH:MM" en formato 24h o 12h
+    const parts = timeStr.split(':');
+    let hour = parseInt(parts[0]);
+    // Detectar AM/PM si viene en formato 12h
+    if (timeStr.toLowerCase().includes('p') && hour !== 12) hour += 12;
+    if (timeStr.toLowerCase().includes('a') && hour === 12) hour = 0;
+    if (hour >= 6 && hour < 12) return 'mañana';
+    if (hour >= 12 && hour < 18) return 'tarde';
+    return 'noche';
+  }
+
   function renderHistory() {
     const el = document.getElementById('history');
     const entries = todayEntries();
@@ -700,16 +712,86 @@
       el.innerHTML = '<div class="empty-state">Aún no hay actividades hoy. ¡Empieza tu primer pomodoro! 🍅</div>';
       return;
     }
-    el.innerHTML = entries.map(e => `
-      <div class="history-item ${e.mode}">
-        <div class="hi-dot"></div>
-        <div class="hi-name">${e.name} ${e.completed ? '' : '<span style="color:var(--text-dim);font-size:11px">(interrumpido)</span>'}</div>
-        <div class="hi-meta">
-          ${e.mins > 0 ? e.mins + ' min' : '< 1 min'}<br>
-          <span style="font-size:11px">${e.time}</span>
+
+    // Solo ciclos de trabajo completados para la tabla
+    const ciclos = entries.filter(e => e.mode === 'work' && e.completed);
+    const turnos = {
+      mañana: ciclos.filter(e => getShift(e.time) === 'mañana'),
+      tarde:  ciclos.filter(e => getShift(e.time) === 'tarde'),
+      noche:  ciclos.filter(e => getShift(e.time) === 'noche'),
+    };
+    const turnoConfig = [
+      { key: 'mañana', label: '🌅 Mañana', sub: '6 AM – 12 PM' },
+      { key: 'tarde',  label: '☀️ Tarde',  sub: '12 PM – 6 PM' },
+      { key: 'noche',  label: '🌙 Noche',  sub: '6 PM – 12 AM' },
+    ];
+
+    const tableHTML = `
+      <div style="margin-bottom:24px;">
+        <div style="font-size:12px;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:12px;">
+          📊 Ciclos del día — ${new Date().toLocaleDateString('es-CO', {weekday:'long', day:'numeric', month:'long'})}
+        </div>
+        ${turnoConfig.map(t => {
+          const lista = turnos[t.key];
+          return `
+            <div style="margin-bottom:16px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                <div style="font-size:13px;font-weight:600;color:var(--text);">${t.label} <span style="font-size:11px;color:var(--text-dim);font-weight:400;">${t.sub}</span></div>
+                <div style="font-size:13px;font-weight:700;color:var(--green);">${lista.length} ciclo${lista.length !== 1 ? 's' : ''}</div>
+              </div>
+              ${lista.length === 0
+                ? `<div style="font-size:12px;color:var(--text-dim);padding:8px 12px;background:var(--surface);border-radius:8px;border:1px solid var(--surface3);">Sin ciclos aún</div>`
+                : `<table style="width:100%;border-collapse:collapse;">
+                    <thead>
+                      <tr style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em;">
+                        <th style="text-align:left;padding:4px 10px;border-bottom:1px solid var(--surface3);">#</th>
+                        <th style="text-align:left;padding:4px 10px;border-bottom:1px solid var(--surface3);">Hora</th>
+                        <th style="text-align:left;padding:4px 10px;border-bottom:1px solid var(--surface3);">Actividad</th>
+                        <th style="text-align:right;padding:4px 10px;border-bottom:1px solid var(--surface3);">Duración</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${lista.map((e, i) => `
+                        <tr style="font-size:12px;color:var(--text-dim);">
+                          <td style="padding:6px 10px;border-bottom:1px solid var(--surface);">
+                            <span style="background:var(--green);color:#000;font-weight:700;font-size:10px;padding:2px 6px;border-radius:4px;">${i+1}</span>
+                          </td>
+                          <td style="padding:6px 10px;border-bottom:1px solid var(--surface);color:var(--green);font-weight:600;">${e.time}</td>
+                          <td style="padding:6px 10px;border-bottom:1px solid var(--surface);color:var(--text);">${e.name}</td>
+                          <td style="padding:6px 10px;border-bottom:1px solid var(--surface);text-align:right;">${e.mins > 0 ? e.mins + ' min' : '< 1 min'}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>`
+              }
+            </div>
+          `;
+        }).join('')}
+        <div style="display:flex;gap:16px;margin-top:12px;padding:10px 14px;background:var(--surface);border-radius:8px;border:1px solid var(--surface3);font-size:12px;">
+          <span style="color:var(--text-dim);">Total del día:</span>
+          <span style="color:var(--green);font-weight:700;">${ciclos.length} ciclos</span>
+          <span style="color:var(--text-dim);">·</span>
+          <span style="color:var(--text);">${ciclos.reduce((a,b) => a + b.mins, 0)} min de enfoque</span>
         </div>
       </div>
-    `).join('');
+    `;
+
+    // Historial completo (incluyendo descansos e interrupciones)
+    const historialHTML = `
+      <div style="font-size:12px;font-weight:700;letter-spacing:0.1em;color:var(--text-dim);text-transform:uppercase;margin-bottom:10px;">Historial completo</div>
+      ${entries.map(e => `
+        <div class="history-item ${e.mode}">
+          <div class="hi-dot"></div>
+          <div class="hi-name">${e.name} ${e.completed ? '' : '<span style="color:var(--text-dim);font-size:11px">(interrumpido)</span>'}</div>
+          <div class="hi-meta">
+            ${e.mins > 0 ? e.mins + ' min' : '< 1 min'}<br>
+            <span style="font-size:11px">${e.time}</span>
+          </div>
+        </div>
+      `).join('')}
+    `;
+
+    el.innerHTML = tableHTML + historialHTML;
   }
 
   // Events
