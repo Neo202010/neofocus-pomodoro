@@ -520,6 +520,26 @@
   let history = JSON.parse(localStorage.getItem('pomo_history') || '[]');
   let sessionStart = null;
 
+  // ── Purga automática: elimina entradas con más de 5 días ──
+  function purgeOldHistory() {
+    const DAYS = 5;
+    const cutoff = Date.now() - DAYS * 24 * 60 * 60 * 1000;
+    const before = history.length;
+    history = history.filter(h => {
+      // Intentar parsear la fecha del entry (formato es-CO: d/m/yyyy)
+      try {
+        const parts = h.date.split('/');
+        const d = new Date(+parts[2], +parts[1]-1, +parts[0]);
+        return d.getTime() >= cutoff;
+      } catch { return true; }
+    });
+    if (history.length !== before) {
+      localStorage.setItem('pomo_history', JSON.stringify(history));
+    }
+  }
+
+  purgeOldHistory(); // ejecutar al cargar
+
   // AudioContext for beep
   function beep() {
     try {
